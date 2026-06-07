@@ -13,6 +13,18 @@ app = FastAPI(
     description="Calculate business days between two dates, excluding weekends and holidays",
     version="1.0.0"
 )
+# === BT Builds Standard Middleware (auto-injected) ===
+from fastapi.middleware.cors import CORSMiddleware as _BTCors
+app.add_middleware(_BTCors, allow_origins=["*"], allow_methods=["*"],
+    allow_headers=["*"], expose_headers=["X-RateLimit-Limit","X-RateLimit-Remaining","X-RateLimit-Reset"])
+
+@app.middleware("http")
+async def _bt_add_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Powered-By"] = "btbuilds"
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    return response
+
 
 # Auth and Rate Limiting
 from fastapi.security import HTTPBearer, HTTPException as FastAPIHTTPException
