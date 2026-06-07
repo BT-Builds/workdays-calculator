@@ -55,3 +55,6 @@ curl -X POST https://workdays-calculator.vercel.app/calculate \
 - RapidAPI listing: $19/mo for 1,000 requests
 - Free tier: 100 requests/month
 - Pro tier: 10,000 requests/month
+
+## Postman
+[![Run in Postman](https://run.pstmn.io/button.svg)](https://raw.githubusercontent.com/BT-Builds/workdays-calculator/main/postman_collection.json)
