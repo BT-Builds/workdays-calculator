@@ -1,4 +1,4 @@
-"\"\"Workdays Calculator API - Calculate business days between dates.\"\"\"
+"""Workdays Calculator API - Calculate business days between dates."""
 
 from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel, Field
@@ -87,25 +87,19 @@ HOLIDAYS = {
     ]
 }
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-@app.post("/calculate", response_model=WorkdaysResponse)
-def calculate_workdays(request: WorkdaysRequest, api_key: str = Depends(verify_api_key)):
-    check_rate_limit(api_key)
-    
+def calculate_workdays_core(start_date: str, end_date: str, weekend_days: List[int], country_code: str) -> WorkdaysResponse:
+    """Core workdays calculation logic."""
     try:
-        start = date.fromisoformat(request.start_date)
-        end = date.fromisoformat(request.end_date)
+        start = date.fromisoformat(start_date)
+        end = date.fromisoformat(end_date)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
+        raise ValueError("Invalid date format. Use YYYY-MM-DD.")
     
     if end < start:
-        raise HTTPException(status_code=400, detail="End date must be after start date.")
+        raise ValueError("End date must be after start date.")
     
-    weekend_set = set(request.weekend_days)
-    country_holidays = set(HOLIDAYS.get(request.country_code, []))
+    weekend_set = set(weekend_days)
+    country_holidays = set(HOLIDAYS.get(country_code, set()))
     
     working_dates = []
     total_days = 0
@@ -137,13 +131,76 @@ def calculate_workdays(request: WorkdaysRequest, api_key: str = Depends(verify_a
     workdays = len(working_dates)
     
     return WorkdaysResponse(
-        start_date=request.start_date,
-        end_date=request.end_date,
+        start_date=start_date,
+        end_date=end_date,
         total_days=total_days,
         workdays=workdays,
         holidays=holidays_count,
         weekends=weekends,
         working_dates=working_dates
+    )
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+@app.post("/calculate", response_model=WorkdaysResponse)
+def calculate_workdays(request: WorkdaysRequest, api_key: str = Depends(verify_api_key)):
+    check_rate_limit(api_key)
+    return calculate_workdays_core(
+        request.start_date,
+        request.end_date,
+        request.weekend_days or [6, 7],
+        request.country_code or "US"
+    )
+
+# Bulk endpoint models
+class BulkWorkdaysRequest(BaseModel):
+    items: List[WorkdaysRequest] = Field(..., max_items=1000, description="Array of workdays requests (max 1000)")
+
+class BulkWorkdaysResponse(BaseModel):
+    results: List[dict]
+    total: int
+    successful: int
+
+@app.post("/bulk/calculate", response_model=BulkWorkdaysResponse)
+def calculate_workdays_bulk(request: BulkWorkdaysRequest, api_key: str = Depends(verify_api_key)):
+    check_rate_limit(api_key)
+    
+    results = []
+    successful = 0
+    
+    for item in request.items:
+        try:
+            output = calculate_workdays_core(
+                item.start_date,
+                item.end_date,
+                item.weekend_days or [6, 7],
+                item.country_code or "US"
+            )
+            results.append({
+                "input": item.model_dump(),
+                "output": output.model_dump(),
+                "error": None
+            })
+            successful += 1
+        except ValueError as e:
+            results.append({
+                "input": item.model_dump(),
+                "output": None,
+                "error": str(e)
+            })
+        except Exception as e:
+            results.append({
+                "input": item.model_dump(),
+                "output": None,
+                "error": str(e)
+            })
+    
+    return BulkWorkdaysResponse(
+        results=results,
+        total=len(request.items),
+        successful=successful
     )
 
 try:
